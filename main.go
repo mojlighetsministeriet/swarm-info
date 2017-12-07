@@ -15,14 +15,16 @@ import (
 
 // Container represents a docker container running on a node
 type Container struct {
-	ID        string    `json:"id"`
-	Image     string    `json:"image"`
-	ImageHash string    `json:"imageHash"`
-	Error     string    `json:"error,omitempty"`
-	State     string    `json:"state"`
-	ServiceID string    `json:"serviceId"`
-	NodeID    string    `json:"nodeId"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID           string    `json:"id"`
+	Image        string    `json:"image"`
+	ImageHash    string    `json:"imageHash"`
+	Error        string    `json:"error,omitempty"`
+	State        string    `json:"state"`
+	ServiceID    string    `json:"serviceId"`
+	Slot         int       `json:"slot"`
+	NodeID       string    `json:"nodeId"`
+	DesiredState string    `json:"desiredState"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // Node represents a docker service running on a machine
@@ -119,14 +121,16 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	for _, task := range taskList {
 		imageParts := strings.Split(task.Spec.ContainerSpec.Image, "@")
 		container := Container{
-			ID:        task.Status.ContainerStatus.ContainerID,
-			Image:     imageParts[0],
-			ImageHash: imageParts[1],
-			Error:     task.Status.Err,
-			State:     string(task.Status.State),
-			ServiceID: task.ServiceID,
-			NodeID:    task.NodeID,
-			CreatedAt: task.CreatedAt,
+			ID:           task.Status.ContainerStatus.ContainerID,
+			Image:        imageParts[0],
+			ImageHash:    imageParts[1],
+			Error:        task.Status.Err,
+			State:        string(task.Status.State),
+			ServiceID:    task.ServiceID,
+			Slot:         task.Slot,
+			NodeID:       task.NodeID,
+			DesiredState: string(task.DesiredState),
+			CreatedAt:    task.CreatedAt,
 		}
 		newContainers = append(newContainers, container)
 	}
@@ -158,6 +162,10 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	swarmAggregate.Services = swarm.Services
 
 	for _, container := range swarmAggregate.Containers {
+		if container.DesiredState == "shutdown" {
+			continue
+		}
+
 		node := swarmAggregate.GetNodeByID(container.NodeID)
 		if node != nil {
 			node.Containers = append(node.Containers, container)
@@ -202,7 +210,7 @@ func main() {
 	})
 
 	service.GET("/api/container/:id/logs/", func(request echo.Context) error {
-		logs, err := cli.ContainerLogs(context.Background(), request.Param("id"), types.ContainerLogsOptions{ShowStdout: true})
+		logs, err := cli.ContainerLogs(context.Background(), request.Param("id"), types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
 		if err != nil {
 			return request.String(404, "Not Found")
 		}
@@ -214,7 +222,7 @@ func main() {
 	})
 
 	service.GET("/api/service/:id/logs/", func(request echo.Context) error {
-		logs, err := cli.ServiceLogs(context.Background(), request.Param("id"), types.ContainerLogsOptions{})
+		logs, err := cli.ServiceLogs(context.Background(), request.Param("id"), types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
 		if err != nil {
 			return request.String(404, "Not Found")
 		}
