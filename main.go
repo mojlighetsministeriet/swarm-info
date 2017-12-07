@@ -89,6 +89,7 @@ func (swarm *Swarm) GetContainerByID(id string) (container *Container) {
 }
 
 var swarm Swarm
+var swarmAggregate Swarm
 
 func updateSwarm(cli *client.Client, logger echo.Logger) {
 	nodeList, err := cli.NodeList(context.Background(), types.NodeListOptions{})
@@ -150,10 +151,30 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	swarm.Nodes = newNodes
 	swarm.Containers = newContainers
 	swarm.Services = newServices
+
+	// Construct the populated swarm tree
+	swarmAggregate.Containers = swarm.Containers
+	swarmAggregate.Nodes = swarm.Nodes
+	swarmAggregate.Services = swarm.Services
+
+	for _, container := range swarmAggregate.Containers {
+		node := swarmAggregate.GetNodeByID(container.NodeID)
+		if node != nil {
+			node.Containers = append(node.Containers, container)
+		}
+
+		service := swarmAggregate.GetServiceByID(container.ServiceID)
+		if service != nil {
+			service.Containers = append(service.Containers, container)
+		}
+	}
+
+	swarmAggregate.Containers = nil
 }
 
 func main() {
 	swarm = Swarm{}
+	swarmAggregate = Swarm{}
 
 	cli, err := client.NewEnvClient()
 	if err != nil {
@@ -169,7 +190,7 @@ func main() {
 
 	go func() {
 		updateSwarm(cli, service.Logger)
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 	}()
 
 	service.GET("/api/node/", func(request echo.Context) error {
@@ -200,26 +221,8 @@ func main() {
 		return request.Stream(200, "text/plain;charset=UTF-8", logs)
 	})
 
-	service.GET("/api/aggrigate/", func(request echo.Context) error {
-		swarmTree := Swarm{}
-		swarmTree.Containers = swarm.Containers
-		swarmTree.Nodes = swarm.Nodes
-		swarmTree.Services = swarm.Services
-
-		for _, container := range swarmTree.Containers {
-			node := swarmTree.GetNodeByID(container.NodeID)
-			if node != nil {
-				node.Containers = append(node.Containers, container)
-			}
-
-			service := swarmTree.GetServiceByID(container.ServiceID)
-			if service != nil {
-				service.Containers = append(service.Containers, container)
-			}
-		}
-
-		swarmTree.Containers = nil
-		return request.JSON(200, swarmTree)
+	service.GET("/api/aggregate/", func(request echo.Context) error {
+		return request.JSON(200, swarmAggregate)
 	})
 
 	type routeInfo struct {
