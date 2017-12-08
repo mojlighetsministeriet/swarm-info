@@ -16,6 +16,7 @@ import (
 // Container represents a docker container running on a node
 type Container struct {
 	ID           string    `json:"id"`
+	Name         string    `json:"name"`
 	Image        string    `json:"image"`
 	ImageHash    string    `json:"imageHash"`
 	Error        string    `json:"error,omitempty"`
@@ -124,6 +125,7 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 		imageParts := strings.Split(task.Spec.ContainerSpec.Image, "@")
 		container := Container{
 			ID:           task.Status.ContainerStatus.ContainerID,
+			Name:         task.Name,
 			Image:        imageParts[0],
 			ImageHash:    imageParts[1],
 			Error:        task.Status.Err,
