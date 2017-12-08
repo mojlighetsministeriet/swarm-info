@@ -97,6 +97,7 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	nodeList, err := cli.NodeList(context.Background(), types.NodeListOptions{})
 	if err != nil {
 		logger.Error(err)
+		return
 	}
 
 	newNodes := []Node{}
@@ -115,6 +116,7 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	taskList, err := cli.TaskList(context.Background(), types.TaskListOptions{})
 	if err != nil {
 		logger.Error(err)
+		return
 	}
 
 	newContainers := []Container{}
@@ -138,6 +140,7 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	serviceList, err := cli.ServiceList(context.Background(), types.ServiceListOptions{})
 	if err != nil {
 		logger.Error(err)
+		return
 	}
 
 	newServices := []Service{}
@@ -178,6 +181,9 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	}
 
 	swarmAggregate.Containers = nil
+
+	time.Sleep(1 * time.Second)
+	updateSwarm(cli, logger)
 }
 
 func noHTML5IfAPICallSkipper(context echo.Context) bool {
@@ -208,10 +214,7 @@ func main() {
 
 	service.Logger.SetLevel(log.INFO)
 
-	go func() {
-		updateSwarm(cli, service.Logger)
-		time.Sleep(1 * time.Second)
-	}()
+	go updateSwarm(cli, service.Logger)
 
 	service.GET("/api/node/", func(request echo.Context) error {
 		return request.JSON(200, swarm.Nodes)

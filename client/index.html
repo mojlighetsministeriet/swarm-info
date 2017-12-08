@@ -1,151 +1,146 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <script src="node_modules/d3/build/d3.min.js"></script>
-    <title>Swarm info</title>
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #000;
+<meta charset="utf-8">
+
+<svg width="960" height="600"></svg>
+
+<script src="node_modules/d3/build/d3.min.js"></script>
+<script>
+const nodes = [{ id: "swarm", group: 0, label: "Swarm", level: 1 }]
+const links = []
+
+const svg = d3.select("svg"),
+    width = +svg.attr("width"),
+    height = +svg.attr("height"),
+    color = d3.scaleOrdinal(d3.schemeCategory10);
+
+const simulation = d3.forceSimulation(nodes)
+    .force("charge", d3.forceManyBody().strength(-1000))
+    .force("link", d3.forceLink(links).distance(200))
+    .force("x", d3.forceX())
+    .force("y", d3.forceY())
+    .alphaTarget(1)
+    .on("tick", ticked);
+
+const rootGroup = svg.append("g").attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
+let linkGroup = rootGroup.append("g").attr("stroke", "#000").attr("stroke-width", 1.5).selectAll(".link");
+let nodeGroup = rootGroup.append("g").attr("stroke", "#fff").attr("stroke-width", 1.5).selectAll(".node");
+
+restart();
+
+function restart() {
+
+  // Apply the general update pattern to the nodes.
+  nodeGroup = nodeGroup.data(nodes, (node) => { return node.id;});
+  nodeGroup.exit().remove();
+  nodeGroup = nodeGroup.enter().append("circle")
+    .attr("fill", (node) => {
+      if (node.container) {
+        return 'yellow';
+      } else if (node.node) {
+        return 'orange';
+      } else {
+        return 'brown';
       }
+    })
+    .attr("r", 15)
+    .merge(nodeGroup);
 
-      .links line {
-        stroke: #999;
-        stroke-opacity: 0.8;
-      }
+  // Apply the general update pattern to the links.
+  linkGroup = linkGroup.data(links, (link) => { return link.source.id + "-" + link.target.id; });
+  linkGroup.exit().remove();
+  linkGroup = linkGroup.enter().append("line").merge(linkGroup);
 
-      .nodes circle {
-        stroke: #fff;
-        stroke-width: 1.5px;
-      }
+  // Update and restart the simulation.
+  simulation.nodes(nodes);
+  simulation.force("link").links(links);
+  simulation.alpha(1).restart();
+}
 
-      .svg-container {
-        display: inline-block;
-        position: relative;
-        width: 100%;
-        padding-bottom: 100vh; /* aspect ratio */
-        vertical-align: top;
-        overflow: hidden;
-      }
-      .svg-content-responsive {
-        display: inline-block;
-        position: absolute;
-        top: 0;
-        left: 0;
-        max-height: 100vh;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="wrapper"></div>
-    <script>
-      d3.select("#wrapper")
-         .append("div")
-         .classed("svg-container", true) //container class to make it responsive
-         .append("svg")
-         //responsive SVG needs these 2 attributes and no width and height attr
-         .attr("preserveAspectRatio", "xMinYMin meet")
-         .attr("viewBox", "0 0 600 600")
-         //class to make it responsive
-         .classed("svg-content-responsive", true);
-      const svg = d3.select('#wrapper svg');
+function ticked() {
+  nodeGroup.attr("cx", (node) => { return node.x; })
+           .attr("cy", (node) => { return node.y; })
 
-      const color = d3.scaleOrdinal(d3.schemeCategory20);
+  linkGroup.attr("x1", (link) => { return link.source.x; })
+           .attr("y1", (link) => { return link.source.y; })
+           .attr("x2", (link) => { return link.target.x; })
+           .attr("y2", (link) => { return link.target.y; });
+}
 
-      const graph = { nodes: [], links: [] };
+// diffing and mutating the data
+function updateData() {
+  d3.json('/api/aggregate/', (error, data) => {
+    if (error) {
+      console.error(error);
+      setTimeout(updateData, 3000);
+      return;
+    }
 
-      const simulation = d3.forceSimulation()
-          .force('link', d3.forceLink().id((d) => { return d.id; }))
-          .force('charge', d3.forceManyBody().strength(-5000))
-          .force('center', d3.forceCenter(600 / 2, 600 / 2));
+    const newNodes = [];
 
-      const link = svg.append('g')
-        .attr('class', 'links')
-        .selectAll('line');
+    data.nodes.forEach((node) => {
+      newNodes.push({label: node.hostname, id: node.id, group: 'nodes', node, radius: 15});
+      node.containers.forEach((container) => {
+        newNodes.push({label: `${container.image} (${container.slot})`, id: container.id, group: 'containers', container, radius: 10});
+      });
+    });
 
-      const node = svg.append('g')
-        .attr('class', 'nodes')
-        .selectAll('circle');
-
-      function updateData(callback) {
-        d3.json('/api/aggregate/', (error, data) => {
-          if (error) {
-            console.error(error);
-            return;
+    const diff = {
+      removed: nodes.filter((node) => {
+        let inNewNodes = false
+        newNodes.forEach((newNode) => {
+          if (node.id === newNode.id) {
+            inNewNodes = true
           }
+        })
 
-          const nodes = [{title: 'swarm', id: 'swarm', group: 'swarm', radius: 20}];
-          const links = [];
+        return !inNewNodes && node.id !== 'swarm';
+      }),
+      added: newNodes.filter((newNode) => {
+        let inNodes = false
+        nodes.forEach((node) => {
+          if (newNode.id === node.id) {
+            inNodes = true
+          }
+        })
 
-          data.nodes.forEach((node) => {
-            nodes.push({title: node.hostname, id: node.id, group: 'nodes', node, radius: 15});
-            links.push({source: 'swarm', target: node.id})
-            node.containers.forEach((container) => {
-              nodes.push({title: `${container.image} (${container.slot})`, id: container.id, group: 'containers', container, radius: 10});
-              links.push({source: node.id, target: container.id})
-            });
-          });
+        return !inNodes;
+      })
+    }
 
-          graph.nodes = nodes;
-          graph.links = links;
+    if (diff.removed.length || diff.added.length) {
+      diff.removed.forEach((node) => {
+        nodes.splice(nodes.indexOf(node), 1)
+        for (const i = links.length; i >= 0; i--) {
+          const link = links[i]
+          if (link && (node.id === link.source.id || node.id === link.target.id)) {
+            links.splice(i, 1)
+          }
+        }
+      })
 
-          link.data(links)
-            .enter().append('line')
-              .attr('stroke-width', 2);
+      diff.added.forEach((node) => {nodes.push(node)})
+      diff.added.forEach((node) => {
+        if (node.container) {
+          let source;
+          nodes.forEach((sourceCandidate) => {
+            if (sourceCandidate.id === node.container.nodeId) {
+              source = sourceCandidate
+            }
+          })
+          if (source) {
+            links.push({source, target: node, strength: 25})
+          }
+        } else if (node.node) {
+          links.push({source: nodes[0], target: node, strength: 50})
+        }
+      })
 
-          node.data(nodes)
-            .enter().append('circle')
-              .attr('r', (d) => { return d.radius || 10; })
-              .attr('text', (d) => { return d.title; })
-              .attr('fill', (d) => { return color(d.group); })
-              .call(d3.drag()
-                  .on('start', dragstarted)
-                  .on('drag', dragged)
-                  .on('end', dragended));
+      restart();
+    }
 
-          setTimeout(updateData, 1000);
-        });
-      }
+    setTimeout(updateData, 3000);
+  })
+}
+updateData();
 
-      updateData();
-
-      simulation
-          .nodes(graph.nodes)
-          .on('tick', ticked);
-
-      simulation.force('link')
-          .links(graph.links);
-
-      function ticked() {
-        link
-            .attr('x1', (d) => { return d.source.x; })
-            .attr('y1', (d) => { return d.source.y; })
-            .attr('x2', (d) => { return d.target.x; })
-            .attr('y2', (d) => { return d.target.y; });
-
-        node
-            .attr('cx', (d) => { return d.x; })
-            .attr('cy', (d) => { return d.y; });
-      }
-
-      function dragstarted(d) {
-        if (!d3.event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-      }
-
-      function dragged(d) {
-        d.fx = d3.event.x;
-        d.fy = d3.event.y;
-      }
-
-      function dragended(d) {
-        if (!d3.event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-      }
-    </script>
-  </body>
-</html>
+</script>
