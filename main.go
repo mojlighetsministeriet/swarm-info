@@ -2,6 +2,7 @@ package main // import "github.com/mojlighetsministeriet/swarm-info"
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,7 +126,7 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 		imageParts := strings.Split(task.Spec.ContainerSpec.Image, "@")
 		container := Container{
 			ID:           task.Status.ContainerStatus.ContainerID,
-			Name:         task.Name,
+			Name:         task.Spec.Networks[0].Aliases[0] + "." + strconv.Itoa(task.Slot),
 			Image:        imageParts[0],
 			ImageHash:    imageParts[1],
 			Error:        task.Status.Err,
