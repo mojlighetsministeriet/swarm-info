@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="node_modules/d3/build/d3.min.js"></script>
+    <title>Swarm info</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+
+      .links line {
+        stroke: #999;
+        stroke-opacity: 0.8;
+      }
+
+      .nodes circle {
+        stroke: #fff;
+        stroke-width: 1.5px;
+      }
+
+      .svg-container {
+        display: inline-block;
+        position: relative;
+        width: 100%;
+        padding-bottom: 100vh; /* aspect ratio */
+        vertical-align: top;
+        overflow: hidden;
+      }
+      .svg-content-responsive {
+        display: inline-block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        max-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="wrapper"></div>
+    <script>
+      d3.select("#wrapper")
+         .append("div")
+         .classed("svg-container", true) //container class to make it responsive
+         .append("svg")
+         //responsive SVG needs these 2 attributes and no width and height attr
+         .attr("preserveAspectRatio", "xMinYMin meet")
+         .attr("viewBox", "0 0 600 600")
+         //class to make it responsive
+         .classed("svg-content-responsive", true);
+      const svg = d3.select('#wrapper svg');
+
+      const color = d3.scaleOrdinal(d3.schemeCategory20);
+
+      const graph = { nodes: [], links: [] };
+
+      const simulation = d3.forceSimulation()
+          .force('link', d3.forceLink().id((d) => { return d.id; }))
+          .force('charge', d3.forceManyBody().strength(-5000))
+          .force('center', d3.forceCenter(600 / 2, 600 / 2));
+
+      const link = svg.append('g')
+        .attr('class', 'links')
+        .selectAll('line');
+
+      const node = svg.append('g')
+        .attr('class', 'nodes')
+        .selectAll('circle');
+
+      function updateData(callback) {
+        d3.json('/api/aggregate/', (error, data) => {
+          if (error) {
+            console.error(error);
+            return;
+          }
+
+          const nodes = [{title: 'swarm', id: 'swarm', group: 'swarm', radius: 20}];
+          const links = [];
+
+          data.nodes.forEach((node) => {
+            nodes.push({title: node.hostname, id: node.id, group: 'nodes', node, radius: 15});
+            links.push({source: 'swarm', target: node.id})
+            node.containers.forEach((container) => {
+              nodes.push({title: `${container.image} (${container.slot})`, id: container.id, group: 'containers', container, radius: 10});
+              links.push({source: node.id, target: container.id})
+            });
+          });
+
+          graph.nodes = nodes;
+          graph.links = links;
+
+          link.data(links)
+            .enter().append('line')
+              .attr('stroke-width', 2);
+
+          node.data(nodes)
+            .enter().append('circle')
+              .attr('r', (d) => { return d.radius || 10; })
+              .attr('text', (d) => { return d.title; })
+              .attr('fill', (d) => { return color(d.group); })
+              .call(d3.drag()
+                  .on('start', dragstarted)
+                  .on('drag', dragged)
+                  .on('end', dragended));
+
+          setTimeout(updateData, 1000);
+        });
+      }
+
+      updateData();
+
+      simulation
+          .nodes(graph.nodes)
+          .on('tick', ticked);
+
+      simulation.force('link')
+          .links(graph.links);
+
+      function ticked() {
+        link
+            .attr('x1', (d) => { return d.source.x; })
+            .attr('y1', (d) => { return d.source.y; })
+            .attr('x2', (d) => { return d.target.x; })
+            .attr('y2', (d) => { return d.target.y; });
+
+        node
+            .attr('cx', (d) => { return d.x; })
+            .attr('cy', (d) => { return d.y; });
+      }
+
+      function dragstarted(d) {
+        if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(d) {
+        d.fx = d3.event.x;
+        d.fy = d3.event.y;
+      }
+
+      function dragended(d) {
+        if (!d3.event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+    </script>
+  </body>
+</html>

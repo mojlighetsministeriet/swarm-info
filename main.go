@@ -180,6 +180,14 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 	swarmAggregate.Containers = nil
 }
 
+func noHTML5IfAPICallSkipper(context echo.Context) bool {
+	if strings.HasPrefix(context.Path(), "/api/") || strings.HasPrefix(context.Path(), "/node_modules/") {
+		return true
+	}
+
+	return false
+}
+
 func main() {
 	swarm = Swarm{}
 	swarmAggregate = Swarm{}
@@ -190,10 +198,14 @@ func main() {
 	}
 
 	service := echo.New()
-	service.Use(middleware.AddTrailingSlashWithConfig(middleware.TrailingSlashConfig{
-		RedirectCode: http.StatusMovedPermanently,
-	}))
 	service.Use(middleware.Gzip())
+	service.Use(middleware.Static("client"))
+	service.Use(middleware.StaticWithConfig(middleware.StaticConfig{
+		Root:    "client",
+		HTML5:   true,
+		Skipper: noHTML5IfAPICallSkipper,
+	}))
+
 	service.Logger.SetLevel(log.INFO)
 
 	go func() {
