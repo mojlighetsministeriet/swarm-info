@@ -108,7 +108,7 @@ func updateSwarm(cli *client.Client, logger echo.Logger) {
 			ID:       nodeInfo.ID,
 			Hostname: nodeInfo.Description.Hostname,
 			State:    string(nodeInfo.Status.State),
-			Manager:  nodeInfo.ManagerStatus.Leader,
+			// Manager:  nodeInfo.ManagerStatus.Leader,
 			IP:       nodeInfo.Status.Addr,
 			JoinedAt: nodeInfo.CreatedAt,
 		}
