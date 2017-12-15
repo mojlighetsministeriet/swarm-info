@@ -87,9 +87,11 @@ function updateData() {
 
     data.nodes.forEach((node) => {
       newNodes.push({label: node.hostname, id: node.id, group: 'nodes', node, radius: 15});
-      node.containers.forEach((container) => {
-        newNodes.push({label: container.name, id: container.id, group: 'containers', container, radius: 10});
-      });
+      if (Array.isArray(node.containers)) {
+        node.containers.forEach((container) => {
+          newNodes.push({label: container.name, id: container.id, group: 'containers', container, radius: 10});
+        });
+      }
     });
 
     const diff = {
